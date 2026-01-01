@@ -18,7 +18,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📑 나만의 맞춤 문제집 생성기 (클라우드 배포용)")
+st.title("📑 나만의 맞춤 문제집 생성기 (LEET 전용)")
 
 # --- 0. 세션 초기화 ---
 if 'exam_cart' not in st.session_state: st.session_state.exam_cart = []
@@ -30,28 +30,36 @@ def toggle_question(exam_id, q_num):
     else: current_list.append(q_num); current_list.sort()
     st.session_state.selected_questions_map[exam_id] = current_list
 
-# [수정됨] 서버와 로컬 모두에서 폰트 찾기
 def get_korean_font_path():
-    # 1순위: 깃허브에 같이 올린 폰트 파일 (서버용)
-    if os.path.exists("MALGUN.TTF"): 
-        return "MALGUN.TTF"
+    # 1순위: 깃허브/서버에 있는 폰트
+    if os.path.exists("malgun.ttf"): return "malgun.ttf"
+    if os.path.exists("Malgun.ttf"): return "Malgun.ttf"
     
-    # 2순위: 내 컴퓨터 윈도우 폰트 (로컬 테스트용)
-    candidates = ["C:/Windows/Fonts/malgun.ttf", "C:/Windows/Fonts/gulim.ttf", "C:/Windows/Fonts/batang.ttf"]
+    # 2순위: 로컬 윈도우 폰트
+    candidates = ["C:/Windows/Fonts/malgun.ttf", "C:/Windows/Fonts/gulim.ttf", "C:/Windows/Fonts/batang.ttf", "C:/Windows/Fonts/NanumGothic.ttf"]
     for path in candidates:
         if os.path.exists(path): return path
-        
     return None
 
 # --- 1. 사이드바 ---
 with st.sidebar:
     st.header("1️⃣ 시험지 추가")
     with st.expander("시험 정보 입력", expanded=True):
-        input_year = st.number_input("연도", 2000, 2030, 2024)
-        input_type = st.selectbox("시험 종류", ["LEET", "PSAT", "MDEET"])
-        input_subject = st.text_input("과목명", "추리논증")
-        input_book = st.text_input("책형", "홀수형")
+        # [수정] 연도 선택 (2017 ~ 2026)
+        input_year = st.selectbox("연도", range(2017, 2027))
         
+        # [수정] 고정값 처리
+        st.info(f"시험: LEET\n과목: 추리논증\n책형: 홀수형")
+        input_type = "LEET"
+        input_subject = "추리논증"
+        input_book = "홀수형"
+        
+        # [수정] 문항 수 설정 (2017, 2018년은 35문제, 나머지는 40문제)
+        if input_year in [2017, 2018]:
+            max_q_count = 35
+        else:
+            max_q_count = 40
+            
         folder_name = f"{input_year}_{input_type}_{input_subject}_{input_book}"
         full_path = f"output/{folder_name}"
         
@@ -63,14 +71,15 @@ with st.sidebar:
                         'title': f"{input_year} {input_type}",
                         'sub': f"{input_subject} ({input_book})",
                         'full_title': f"{input_year} {input_type} {input_subject} {input_book}",
-                        'path': full_path
+                        'path': full_path,
+                        'max_q': max_q_count  # [중요] 해당 시험의 최대 문항 수 저장
                     })
                     st.session_state.selected_questions_map[folder_name] = []
                     st.rerun()
                 else:
                     st.toast("이미 추가된 시험지입니다.")
             else:
-                st.error(f"폴더 없음: {folder_name}")
+                st.error(f"폴더 없음: {folder_name}\n(깃허브 output 폴더를 확인하세요)")
 
     st.markdown("---")
     st.subheader("📊 선택 현황")
@@ -91,7 +100,7 @@ else:
                 c1, c2 = st.columns([8, 1])
                 with c1:
                     st.subheader(exam['title'])
-                    st.caption(exam['sub'])
+                    st.caption(f"{exam['sub']} - 총 {exam['max_q']}문항")
                 with c2:
                     if st.button("✕", key=f"del_{exam['id']}", help="삭제"):
                         st.session_state.exam_cart.pop(idx)
@@ -99,12 +108,21 @@ else:
                         st.rerun()
                 
                 selected_list = st.session_state.selected_questions_map.get(exam['id'], [])
+                
+                # [수정] 해당 시험의 최대 문항 수 가져오기
+                current_max_q = exam.get('max_q', 40)
+                
                 cols_per_row = 8
-                for r in range(5):
+                # 40문제면 5줄, 35문제면 5줄 (마지막 줄 비어있음)
+                rows_needed = (current_max_q + cols_per_row - 1) // cols_per_row
+                
+                for r in range(rows_needed):
                     cols = st.columns(cols_per_row)
                     for c in range(cols_per_row):
                         q_num = r * cols_per_row + c + 1
-                        if q_num <= 40:
+                        
+                        # [수정] 최대 문항 수까지만 버튼 생성
+                        if q_num <= current_max_q:
                             with cols[c]:
                                 is_sel = q_num in selected_list
                                 st.button(f"{q_num}", key=f"btn_{exam['id']}_{q_num}", type="primary" if is_sel else "secondary", on_click=toggle_question, args=(exam['id'], q_num), use_container_width=True)
@@ -150,10 +168,10 @@ else:
             COL_GAP = 12 * PT_PER_MM
             COL_W = (PAGE_W - (2 * MARGIN) - COL_GAP) / 2
             
-            # [고정값 설정]
+            # [고정 설정값]
             FIXED_NUM_POS_X_MM = 0   # 가로 이동 0mm
             FIXED_NUM_POS_Y_MM = 1   # 세로 이동 1mm
-            FIXED_FONT_SIZE = 13     # 글자 크기 13pt
+            FIXED_FONT_SIZE = 13     # 글자 크기 13
             
             # PT 단위 변환
             NUM_X_PT = FIXED_NUM_POS_X_MM * PT_PER_MM
@@ -161,7 +179,6 @@ else:
             
             HEADER_H_PT = 20 if show_source else 0
             
-            # [수정됨] 지우개 너비 19px로 고정
             FIXED_MASK_W = 19
             FIXED_MASK_H = 20
             
@@ -188,7 +205,8 @@ else:
                 for q_orig in target_qs:
                     status_text.text(f"작업 중... {new_q_num}번 문항")
                     
-                    img_path = f"{exam['path']}/{q_orig:02d}.png"
+                    # [수정] 파일 확장자 .png -> .jpg 변경
+                    img_path = f"{exam['path']}/{q_orig:02d}.jpg"
                     
                     if os.path.exists(img_path):
                         with Image.open(img_path) as pil_img:
@@ -230,23 +248,25 @@ else:
                             else:
                                 curr_page.insert_image(rect, filename=img_path)
                             
-                            # [3] 지우개 (19x20 고정)
+                            # [3] 지우개 (고정값)
                             shape = curr_page.new_shape()
                             shape.draw_rect(fitz.Rect(cx, img_start_y, cx + FIXED_MASK_W, img_start_y + FIXED_MASK_H))
                             shape.finish(color=(1, 1, 1), fill=(1, 1, 1), width=0)
                             shape.commit()
 
-                            # [4] 새 번호 (겹쳐 쓰기로 볼드 처리)
+                            # [4] 새 번호 (볼드 효과: 겹쳐 쓰기)
                             num_pt = (cx + NUM_X_PT, img_start_y + NUM_Y_PT + FIXED_FONT_SIZE)
                             num_str = f"{new_q_num}."
                             
                             if final_font_path:
-                                # 원본 출력
+                                # 원본
                                 curr_page.insert_text(num_pt, num_str, fontname=fontname_alias, fontfile=final_font_path, fontsize=FIXED_FONT_SIZE, color=(0,0,0))
-                                # 약간 옆에 한 번 더 출력 (Bold 효과)
+                                # 볼드용 겹침
                                 curr_page.insert_text((num_pt[0] + 0.7, num_pt[1]), num_str, fontname=fontname_alias, fontfile=final_font_path, fontsize=FIXED_FONT_SIZE, color=(0,0,0))
                             else:
+                                # 원본
                                 curr_page.insert_text(num_pt, num_str, fontsize=FIXED_FONT_SIZE, color=(0,0,0))
+                                # 볼드용 겹침
                                 curr_page.insert_text((num_pt[0] + 0.7, num_pt[1]), num_str, fontsize=FIXED_FONT_SIZE, color=(0,0,0))
 
                             new_q_num += 1
@@ -263,4 +283,3 @@ else:
                 st.download_button("📥 다운로드", f, file_name=out_name, mime="application/pdf", use_container_width=True)
     else:
         st.warning("문제를 선택해주세요.")
-
